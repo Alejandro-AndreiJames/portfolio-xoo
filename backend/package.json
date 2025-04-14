@@ -1,0 +1,26 @@
+{
+  "name": "portfolio-drei",
+  "version": "1.0.0",
+  "description": "Andrei's Portfolio with Vue.js frontend and Express.js backend",
+  "scripts": {
+    "start": "node backend/server.js",
+    "server": "nodemon backend/server.js",
+    "client": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "cd frontend && npm run build",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.1",
+    "sequelize-cli": "^6.6.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mysql2": "^3.14.0",
+    "patch": "^0.0.1",
+    "sequelize": "^6.37.7"
+  }
+}
