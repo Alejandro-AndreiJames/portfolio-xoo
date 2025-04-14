@@ -39,7 +39,8 @@ const createSuggestion = async (req, res) => {
     const suggestion = await suggestions.create({
       user_id: user.id,
       message: req.body.message,
-      status: 'active'  // Default to active
+      status: 'active',  // Default to active
+      is_active: 1      // Set is_active to 1 for active status
     });
     
     console.log('Suggestion created:', suggestion.id);
@@ -76,6 +77,7 @@ const createSuggestion = async (req, res) => {
         id: suggestion.id,
         message: suggestion.message,
         status: suggestion.status,
+        is_active: suggestion.is_active,
         userName: user.name,
         userEmail: user.email,
         courseId: courseId
@@ -162,6 +164,11 @@ const updateSuggestion = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Suggestion not found' });
     }
     
+    // Set is_active based on status if status is being updated
+    if (req.body.status) {
+      req.body.is_active = req.body.status === 'active' ? 1 : 0;
+    }
+    
     await suggestion.update(req.body);
     
     res.json({
@@ -183,8 +190,11 @@ const deleteSuggestion = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Suggestion not found' });
     }
 
-    // Update status to inactive and soft delete
-    await suggestion.update({ status: 'inactive' });
+    // Update status to inactive and is_active to 0, then soft delete
+    await suggestion.update({ 
+      status: 'inactive',
+      is_active: 0 
+    });
     await suggestion.destroy(); // This will set deletedAt due to paranoid: true
     
     res.json({
@@ -201,19 +211,23 @@ const restoreSuggestion = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // First restore the soft-deleted record
-    await suggestions.restore({
-      where: { id }
+    // Find the deleted suggestion
+    const suggestion = await suggestions.findOne({
+      where: { id },
+      paranoid: false // This allows us to find soft-deleted records
     });
-    
-    // Then update the status to active
-    const suggestion = await suggestions.findByPk(id);
+
     if (!suggestion) {
       return res.status(404).json({ success: false, error: 'Suggestion not found' });
     }
-    
-    await suggestion.update({ status: 'active' });
-    
+
+    // Restore the suggestion and set it as active
+    await suggestion.restore();
+    await suggestion.update({ 
+      status: 'active',
+      is_active: 1
+    });
+
     res.json({
       success: true,
       message: 'Suggestion restored successfully',
@@ -221,7 +235,7 @@ const restoreSuggestion = async (req, res) => {
     });
   } catch (error) {
     console.error('Error restoring suggestion:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
