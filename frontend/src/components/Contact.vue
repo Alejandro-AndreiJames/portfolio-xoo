@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 
 const formData = ref({
   name: '',
@@ -8,6 +8,12 @@ const formData = ref({
   course: '',
   message: ''
 })
+
+// Add new refs for name checking
+const existingUserSuggestions = ref([])
+const isCheckingName = ref(false)
+const nameCheckTimeout = ref(null)
+const emailCheckTimeout = ref(null)
 
 // track if user have submitted.
 const hasSubmitted = ref(false)
@@ -70,9 +76,26 @@ const fetchSuggestions = async () => {
   try {
     console.log('API URL:', import.meta.env.VITE_API_URL);
     const apiUrl = `${import.meta.env.VITE_API_URL}/suggestions`;
+    const params = new URLSearchParams();
+    
+    const storedUserInfo = localStorage.getItem('userInfo')
+    const userInfo = storedUserInfo ? JSON.parse(storedUserInfo) : null
+    
+    // Add role parameter
+    if (userInfo?.role) {
+      params.append('role', userInfo.role);
+      selectedRole.value = userInfo.role;
+    }
+    
+    // For students, add email parameter
+    if (userInfo?.role === 'student' && userInfo?.email) {
+      params.append('email', userInfo.email);
+      userEmail.value = userInfo.email;
+    }
+    
     console.log('Fetching suggestions from:', apiUrl);
     
-    const response = await fetch(apiUrl, {
+    const response = await fetch(`${apiUrl}?${params.toString()}`, {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
@@ -89,6 +112,7 @@ const fetchSuggestions = async () => {
     if (data.success) {
       suggestions.value = data.data;
       loading.value = false;
+      hasSubmitted.value = true;
     } else {
       throw new Error(data.error || 'Failed to load suggestions');
     }
@@ -99,9 +123,65 @@ const fetchSuggestions = async () => {
   }
 };
 
+// Add new ref for tracking form changes
+const hasUnsavedChanges = computed(() => {
+  return formData.value.name !== '' || 
+         formData.value.email !== '' || 
+         formData.value.role !== '' || 
+         formData.value.course !== '' || 
+         formData.value.message !== '';
+})
+
+// Function to clear form and storage
+const clearFormAndStorage = () => {
+  // Clear form data
+  formData.value = {
+    name: '',
+    email: '',
+    role: '',
+    course: '',
+    message: ''
+  }
+  // Clear stored user info
+  localStorage.removeItem('userInfo')
+  // Reset other states
+  hasSubmitted.value = false
+  selectedRole.value = ''
+  userEmail.value = ''
+  existingUserSuggestions.value = []
+}
+
+// Handle page unload/navigation
+const handleBeforeUnload = (e) => {
+  if (hasUnsavedChanges.value) {
+    e.preventDefault()
+    e.returnValue = ''
+    return ''
+  } else {
+    clearFormAndStorage() // Clear everything if no unsaved changes
+  }
+}
+
+// Setup event listeners on mount
 onMounted(() => {
-  console.log('Component mounted, fetching suggestions...');
-  fetchSuggestions();
+  console.log('Component mounted')
+  const storedUserInfo = localStorage.getItem('userInfo')
+  if (storedUserInfo) {
+    const userInfo = JSON.parse(storedUserInfo)
+    selectedRole.value = userInfo.role
+    userEmail.value = userInfo.email
+    hasSubmitted.value = true
+  }
+  fetchSuggestions()
+  
+  // Add event listeners for navigation
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+// Cleanup event listeners on unmount
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  clearFormAndStorage()
 })
 
 const submitForm = async (event) => {
@@ -129,11 +209,36 @@ const submitForm = async (event) => {
     console.log('Response data:', result)
     
     if (result.success) {
-      await fetchSuggestions()
-      selectedRole.value = formData.value.role
-      userEmail.value = formData.value.email
-      formData.value = { name: '', email: '', role: '', course: '', message: '' }
+      // Store role and user info before clearing form
+      const submittedRole = formData.value.role
+      const submittedEmail = formData.value.email
+      const submittedName = formData.value.name
+      
+      // Store user info for filtering
+      const userInfo = {
+        name: submittedName,
+        email: submittedEmail,
+        role: submittedRole
+      }
+      localStorage.setItem('userInfo', JSON.stringify(userInfo))
+      
+      // Set the role and email first
+      selectedRole.value = submittedRole
+      userEmail.value = submittedEmail
       hasSubmitted.value = true
+      
+      // Fetch updated suggestions
+      await fetchSuggestions()
+      
+      // Clear the form after fetching suggestions
+      formData.value = {
+        name: '',
+        email: '',
+        role: '',
+        course: '',
+        message: ''
+      }
+      
       showToast('Suggestion submitted successfully!')
     } else {
       console.error('Submission failed:', result.error)
@@ -309,8 +414,16 @@ const permanentlyDeleteSuggestion = async (id) => {
     const result = await response.json()
     
     if (result.success) {
+      // Remove from both active and archived lists
+      suggestions.value = suggestions.value.filter(s => s.id !== id)
       archivedSuggestions.value = archivedSuggestions.value.filter(s => s.id !== id)
       showToast('Suggestion permanently deleted')
+      
+      // Refresh the lists to ensure proper state
+      await fetchSuggestions()
+      if (showArchived.value) {
+        await fetchInactiveSuggestions()
+      }
     } else {
       showToast(result.error || 'Failed to delete suggestion', 'danger')
     }
@@ -320,14 +433,65 @@ const permanentlyDeleteSuggestion = async (id) => {
   }
 }
 
-// role based access
+// Add new function to check existing user
+const checkExistingUser = async () => {
+  if (!formData.value.name || !formData.value.email || formData.value.role !== 'student') return;
+  
+  isCheckingName.value = true;
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/suggestions/check-user?name=${encodeURIComponent(formData.value.name)}&email=${encodeURIComponent(formData.value.email)}`
+    );
+    const result = await response.json();
+    
+    if (result.success && result.data.exists) {
+      existingUserSuggestions.value = result.data.suggestions;
+      // Update form data with the found user's information
+      formData.value.name = result.data.user.name;
+      formData.value.email = result.data.user.email;
+    } else {
+      existingUserSuggestions.value = [];
+    }
+  } catch (error) {
+    console.error('Error checking existing user:', error);
+  } finally {
+    isCheckingName.value = false;
+  }
+};
+
+// Add watchers for name and email changes
+watch([() => formData.value.name, () => formData.value.email], ([newName, newEmail]) => {
+  if (nameCheckTimeout.value) {
+    clearTimeout(nameCheckTimeout.value);
+  }
+  if (emailCheckTimeout.value) {
+    clearTimeout(emailCheckTimeout.value);
+  }
+  
+  if (newName && newEmail) {
+    nameCheckTimeout.value = setTimeout(() => {
+      checkExistingUser();
+    }, 500);
+  }
+});
+
+// Modify the filteredSuggestions computed property
 const filteredSuggestions = computed(() => {
   if (selectedRole.value === 'admin') {
     //admins can see all suggestions
     return suggestions.value
   } else if (selectedRole.value === 'student') {
-    //students can only see their own submissions
-    return suggestions.value.filter(s => s.email === userEmail.value)
+    //students can see their own submissions
+    const storedUserInfo = localStorage.getItem('userInfo')
+    if (storedUserInfo) {
+      const userInfo = JSON.parse(storedUserInfo)
+      return suggestions.value.filter(s => 
+        s.user && s.user.email === userInfo.email
+      );
+    }
+    return suggestions.value.filter(s => 
+      s.user && s.user.email === formData.value.email
+    );
   }
   return []
 })
@@ -367,6 +531,13 @@ const proceedWithRestore = async () => {
   await restoreSuggestion(restoreItemId.value)
   showRestoreModal.value = false
 }
+
+// Add watcher for role changes to refresh suggestions
+watch(() => selectedRole.value, () => {
+  if (hasSubmitted.value) {
+    fetchSuggestions();
+  }
+});
 </script>
 
 <template>
@@ -423,6 +594,9 @@ const proceedWithRestore = async () => {
                 v-model="formData.email"
                 required
               >
+            </div>
+            <div v-if="isCheckingName" class="form-text text-muted mb-3">
+              Checking for existing suggestions...
             </div>
             <div class="mb-3">
               <label for="role" class="form-label">Role</label>
@@ -567,7 +741,7 @@ const proceedWithRestore = async () => {
       </div>
       
       <!-- Pagination -->
-      <div class="d-flex justify-content-center mt-4">
+      <div v-if="(showArchived ? archivedSuggestions : filteredSuggestions).length > 0" class="d-flex justify-content-center mt-4">
         <nav aria-label="Suggestions pagination">
           <ul class="pagination">
             <li class="page-item" :class="{ disabled: currentPage === 1 }">
@@ -590,6 +764,25 @@ const proceedWithRestore = async () => {
             </li>
           </ul>
         </nav>
+      </div>
+    </div>
+
+    <!-- Add this section before the Recent Suggestions section -->
+    <div v-if="formData.role === 'student' && existingUserSuggestions.length > 0" class="mt-4">
+      <h4 class="text-center mb-3">Previous Suggestions by {{ formData.name }}</h4>
+      <div class="row justify-content-center g-4">
+        <div v-for="suggestion in existingUserSuggestions" :key="suggestion.id" class="col-md-6 col-lg-4">
+          <div class="card h-100 shadow-sm border-0 bg-light">
+            <div class="card-body p-4">
+              <h5 class="card-title fw-bold mb-0">{{ suggestion.user.name }}</h5>
+              <h6 class="card-subtitle mb-3 text-muted">{{ suggestion.user.email }}</h6>
+              <p class="card-text mb-4">{{ suggestion.message }}</p>
+              <div class="text-muted small mt-3">
+                Submitted: {{ new Date(suggestion.createdAt).toLocaleString() }}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

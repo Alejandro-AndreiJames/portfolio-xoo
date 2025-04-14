@@ -11,6 +11,9 @@ router.get('/suggestions', suggestionController.getSuggestions);
 // GET - Get archived suggestions
 router.get('/suggestions/archived', suggestionController.getArchivedSuggestions);
 
+// GET - Check existing user and their suggestions
+router.get('/suggestions/check-user', suggestionController.checkExistingUser);
+
 // PUT - Update a suggestion
 router.put('/suggestions/:id', suggestionController.updateSuggestion);
 
