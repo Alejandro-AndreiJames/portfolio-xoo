@@ -26,7 +26,9 @@ app.get('/test', (req, res) => {
 
 // error handling
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  if (process.env.NODE_ENV === 'development') {
+    console.error(err.stack);
+  }
   res.status(500).json({
     message: 'Internal Server Error',
     error: process.env.NODE_ENV === 'development' ? err.message : {}
@@ -43,5 +45,4 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`API endpoints available at http://localhost:${PORT}/api/`);
 });

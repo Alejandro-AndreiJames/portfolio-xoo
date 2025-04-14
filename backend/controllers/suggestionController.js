@@ -2,10 +2,15 @@ const db = require('../models');
 const { suggestions, users, roles, courses, permissions, permissionsSuggestions } = db;
 const { Op } = require('sequelize');
 
+// Helper function to log errors only in development mode
+const logError = (message, error) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.error(message, error);
+  }
+};
+
 const createSuggestion = async (req, res) => {
   try {
-    console.log('Received suggestion submission:', req.body);
-    
     // First, find or create the user
     const [user, userCreated] = await users.findOrCreate({
       where: { email: req.body.email },
@@ -14,8 +19,6 @@ const createSuggestion = async (req, res) => {
         role_id: req.body.role_id || 2 // Default to role_id 2 (student) if not provided
       }
     });
-    
-    console.log('User found or created:', user.id, 'New user:', userCreated);
 
     // Handle course if provided
     let courseId = null;
@@ -32,7 +35,6 @@ const createSuggestion = async (req, res) => {
         }
       });
       courseId = course.id;
-      console.log('Course found or created:', course.id, 'New course:', courseCreated);
     }
 
     // Then create the suggestion linked to this user
@@ -43,8 +45,6 @@ const createSuggestion = async (req, res) => {
       is_active: 1      // Set is_active to 1 for active status
     });
     
-    console.log('Suggestion created:', suggestion.id);
-
     // If we have permissions (admin roles), connect them
     if (user.role_id === 1) {
       // Find or create admin permissions
@@ -66,8 +66,6 @@ const createSuggestion = async (req, res) => {
         permission_id: permission.id,
         suggestion_id: suggestion.id
       });
-      
-      console.log('Permission-Suggestion association created');
     }
 
     res.status(201).json({
@@ -84,7 +82,7 @@ const createSuggestion = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error creating suggestion:', error);
+    logError('Error creating suggestion:', error);
     res.status(400).json({ success: false, error: error.message, stack: error.stack });
   }
 };
@@ -121,7 +119,7 @@ const getSuggestions = async (req, res) => {
       data: activeSuggestions
     });
   } catch (error) {
-    console.error('Error fetching suggestions:', error);
+    logError('Error fetching suggestions:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching suggestions'
@@ -150,7 +148,7 @@ const getArchivedSuggestions = async (req, res) => {
       data: archivedSuggestions
     });
   } catch (error) {
-    console.error('Error fetching archived suggestions:', error);
+    logError('Error fetching archived suggestions:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -202,7 +200,7 @@ const deleteSuggestion = async (req, res) => {
       message: 'Suggestion archived successfully'
     });
   } catch (error) {
-    console.error('Error archiving suggestion:', error);
+    logError('Error archiving suggestion:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -234,7 +232,7 @@ const restoreSuggestion = async (req, res) => {
       data: suggestion
     });
   } catch (error) {
-    console.error('Error restoring suggestion:', error);
+    logError('Error restoring suggestion:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -273,7 +271,7 @@ const permanentlyDeleteSuggestion = async (req, res) => {
       message: 'Suggestion permanently deleted'
     });
   } catch (error) {
-    console.error('Error permanently deleting suggestion:', error);
+    logError('Error permanently deleting suggestion:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to delete suggestion permanently'
@@ -318,7 +316,7 @@ const checkExistingUser = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error checking existing user:', error);
+    logError('Error checking existing user:', error);
     res.status(500).json({
       success: false,
       message: 'Error checking existing user'
