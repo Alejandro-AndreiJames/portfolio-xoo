@@ -1,12 +1,17 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 const projects = ref([])
 const loading = ref(true)
 
+// Create a function to get the image URL
+const getImageUrl = (imagePath) => {
+  return `${import.meta.env.VITE_API_URL.replace('/api', '')}${imagePath}`
+}
+
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost:5000/api/projects')
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/projects`)
     const data = await response.json()
     projects.value = data
     loading.value = false
@@ -31,7 +36,7 @@ onMounted(async () => {
       <div v-else class="row row-cols-1 row-cols-md-2 g-4">
         <div v-for="(project, index) in projects" :key="index" class="col">
           <div class="card h-100 bg-secondary bg-opacity-10 text-dark border-0 shadow-sm card-hover">
-            <img :src="`http://localhost:5000${project.image}`" 
+            <img :src="getImageUrl(project.image)" 
                  class="card-img-top" 
                  :alt="project.title" 
                  style="height: 250px; object-fit: cover;"

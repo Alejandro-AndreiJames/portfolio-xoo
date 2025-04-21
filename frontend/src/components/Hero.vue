@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 const portfolio = ref({
   name: "",
@@ -10,9 +10,18 @@ const portfolio = ref({
 const loading = ref(true)
 let carouselInstance = null
 
+// Create computed properties for image URLs
+const profileImageUrl = computed(() => {
+  return `${import.meta.env.VITE_API_URL.replace('/api', '')}/assets/images/drei.jpg`
+})
+
+const getPhotoUrl = (photo) => {
+  return `${import.meta.env.VITE_API_URL.replace('/api', '')}/assets/images/${photo}`
+}
+
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost:5000/api/hero')
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/hero`)
     const data = await response.json()
     portfolio.value = data
     loading.value = false
@@ -82,7 +91,7 @@ function startCarousel() {
       
       <div v-else class="text-center mb-5">
         <h1 class="display-4 fw-bold mb-4">Hi, I'm {{ portfolio.name }}!</h1>
-        <img src="http://localhost:5000/assets/images/drei.jpg" 
+        <img :src="profileImageUrl" 
             class="rounded-circle img-fluid mb-4" 
             alt="Andrei's photo" 
             style="width: 200px; height: 200px; object-fit: cover;">
@@ -113,7 +122,7 @@ function startCarousel() {
                      class="carousel-item" 
                      :class="{ active: index === 0 }" 
                      style="max-height: 400px; overflow: hidden;">
-                  <img :src="`http://localhost:5000/assets/images/${photo}`" 
+                  <img :src="getPhotoUrl(photo)" 
                        class="d-block w-100" 
                        :alt="`Photo ${index + 1}`"
                        style="width: 100%; height: auto; max-height: 400px; object-fit: contain;">

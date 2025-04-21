@@ -6,7 +6,7 @@ const loading = ref(true)
 
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost:5000/api/hobbies')
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/hobbies`)
     const data = await response.json()
     hobbies.value = data
     loading.value = false
